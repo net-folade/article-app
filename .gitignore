@@ -1,0 +1,12 @@
+.DS_Store
+__pycache__/
+.pytest_cache/
+.venv/
+*.pyc
+.terraform/
+*.tfstate
+*.tfstate.*
+*.zip
+terraform.tfvars
+CLAUDE.md
+PROJECT.md
