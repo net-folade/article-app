@@ -4,7 +4,7 @@ from __future__ import annotations
 import math
 import re 
 
-WORDS_PER_MINUTE=238 
+from src.config import WORDS_PER_MINUTE
 
 # A token counts as a word only if it contains at least one alphanumeric
 # character. [^\W_] means "word character, but not underscore" — which is

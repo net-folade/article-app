@@ -1,0 +1,231 @@
+"""SQLite persistence for articles, plus the S3 round-trip stub.
+
+The whole state of the app is one SQLite file. Phase 4 wraps it in an S3
+pull/push; until then `s3_backed_db` just hands back a local path.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import os
+import sqlite3
+import tempfile
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+from typing import Iterable, Iterator, Optional
+
+from src.config import PER_SOURCE_MONTHLY_CAP, SOURCE_CAP_WINDOW_DAYS
+
+STATUS_NEW = "new"
+STATUS_SENT = "sent"
+
+
+def utcnow() -> str:
+    """Current UTC time as an ISO string with microsecond precision.
+
+    Microseconds are not cosmetic. Tests insert and send dozens of articles
+    inside the same second; with second precision the ORDER BY in
+    last_sent_bucket() has ties and returns an arbitrary row, which makes
+    the anti-repetition tests flake intermittently.
+    """
+    return datetime.now(timezone.utc).isoformat(timespec="microseconds")
+
+
+def days_ago(days: int) -> str:
+    """ISO timestamp `days` in the past. Used for freshness cutoffs."""
+    return (datetime.now(timezone.utc) - timedelta(days=days)).isoformat(
+        timespec="microseconds"
+    )
+
+
+@dataclass
+class Article:
+    """One article. `url_hash` is the primary key and the dedupe mechanism."""
+
+    url_hash: str
+    url: str
+    title: str
+    source: str
+    bucket: str
+    read_minutes: int
+    body_excerpt: str = ""
+    published_at: Optional[str] = None
+    fetched_at: str = field(default_factory=utcnow)
+    status: str = STATUS_NEW
+    sent_at: Optional[str] = None
+
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS articles (
+    url_hash      TEXT PRIMARY KEY,
+    url           TEXT NOT NULL,
+    title         TEXT NOT NULL,
+    source        TEXT NOT NULL,
+    bucket        TEXT NOT NULL,
+    read_minutes  INTEGER NOT NULL,
+    body_excerpt  TEXT NOT NULL DEFAULT '',
+    published_at  TEXT,
+    fetched_at    TEXT NOT NULL,
+    status        TEXT NOT NULL DEFAULT 'new',
+    sent_at       TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_pick
+    ON articles (status, bucket, read_minutes, fetched_at);
+
+CREATE INDEX IF NOT EXISTS idx_sent
+    ON articles (status, sent_at);
+"""
+
+
+class ArticleDB:
+    """Thin wrapper over SQLite. Every query is parameterised."""
+
+    def __init__(self, path: str):
+        self.path = path
+        self.conn = sqlite3.connect(path)
+        # Rows come back as mappings instead of tuples, so we can build
+        # Article objects by name rather than by fragile positional index.
+        self.conn.row_factory = sqlite3.Row
+        self.conn.executescript(SCHEMA)
+        self.conn.commit()
+
+    def close(self) -> None:
+        self.conn.close()
+
+    def __enter__(self) -> "ArticleDB":
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.close()
+
+    # --- writes ---------------------------------------------------------
+
+    def upsert_articles(self, articles: Iterable[Article]) -> int:
+        """Insert articles, ignoring any whose url_hash we already hold.
+
+        Returns the number actually inserted. ON CONFLICT DO NOTHING is the
+        dedupe: re-fetching the same feed every day must not resurrect an
+        article we already sent or reset its status.
+        """
+        rows = [
+            (
+                a.url_hash, a.url, a.title, a.source, a.bucket,
+                a.read_minutes, a.body_excerpt, a.published_at,
+                a.fetched_at, a.status, a.sent_at,
+            )
+            for a in articles
+        ]
+        if not rows:
+            return 0
+        before = self.conn.total_changes
+        self.conn.executemany(
+            """
+            INSERT INTO articles (
+                url_hash, url, title, source, bucket, read_minutes,
+                body_excerpt, published_at, fetched_at, status, sent_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(url_hash) DO NOTHING
+            """,
+            rows,
+        )
+        self.conn.commit()
+        return self.conn.total_changes - before
+
+    def mark_sent(self, url_hash: str) -> None:
+        self.conn.execute(
+            "UPDATE articles SET status = ?, sent_at = ? WHERE url_hash = ?",
+            (STATUS_SENT, utcnow(), url_hash),
+        )
+        self.conn.commit()
+
+    # --- reads ----------------------------------------------------------
+
+    def unsent_articles(
+        self,
+        buckets: Iterable[str],
+        min_minutes: int,
+        max_minutes: int,
+        fresh_days: int,
+    ) -> list[Article]:
+        """Candidates matching bucket, read-time window, and freshness."""
+        buckets = list(buckets)
+        if not buckets:
+            return []
+        # SQLite has no array parameter type, so the IN clause needs one
+        # placeholder per value. The values themselves stay parameterised.
+        placeholders = ",".join("?" for _ in buckets)
+        sql = f"""
+            SELECT * FROM articles
+             WHERE status = ?
+               AND bucket IN ({placeholders})
+               AND read_minutes BETWEEN ? AND ?
+               AND fetched_at >= ?
+        """
+        params = [
+            STATUS_NEW, *buckets, min_minutes, max_minutes,
+            days_ago(fresh_days),
+        ]
+        rows = self.conn.execute(sql, params).fetchall()
+        return [Article(**dict(row)) for row in rows]
+
+    def last_sent_bucket(self) -> Optional[str]:
+        """Bucket of the most recently sent article, or None."""
+        row = self.conn.execute(
+            """
+            SELECT bucket FROM articles
+             WHERE status = ? AND sent_at IS NOT NULL
+             ORDER BY sent_at DESC
+             LIMIT 1
+            """,
+            (STATUS_SENT,),
+        ).fetchone()
+        return row["bucket"] if row else None
+
+    def source_picks_last_30_days(self) -> dict[str, int]:
+        """How many times each source has been sent inside the cap window."""
+        rows = self.conn.execute(
+            """
+            SELECT source, COUNT(*) AS n FROM articles
+             WHERE status = ? AND sent_at >= ?
+             GROUP BY source
+            """,
+            (STATUS_SENT, days_ago(SOURCE_CAP_WINDOW_DAYS)),
+        ).fetchall()
+        return {row["source"]: row["n"] for row in rows}
+
+    def sources_at_cap(self) -> set[str]:
+        counts = self.source_picks_last_30_days()
+        return {s for s, n in counts.items() if n >= PER_SOURCE_MONTHLY_CAP}
+
+
+@contextlib.contextmanager
+def s3_backed_db(
+    bucket: Optional[str] = None,
+    key: str = "state.db",
+    local_path: Optional[str] = None,
+) -> Iterator[ArticleDB]:
+    """Yield an ArticleDB, optionally round-tripped through S3.
+
+    Phase 2 stub: `bucket` is ignored. Phase 4 fills in the download on
+    entry and upload on exit. Written as a context manager now so the
+    call sites never have to change.
+    """
+    if local_path is None:
+        fd, local_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        cleanup = True
+    else:
+        cleanup = False
+
+    if bucket is not None:
+        raise NotImplementedError("S3 round-trip lands in Phase 4")
+
+    db = ArticleDB(local_path)
+    try:
+        yield db
+    finally:
+        db.close()
+        if cleanup:
+            with contextlib.suppress(FileNotFoundError):
+                os.remove(local_path)
