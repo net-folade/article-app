@@ -1,15 +1,4 @@
-"""Check every feed in config.FEEDS against reality.
-
-Feeds die, move, and go paywalled. This is a maintenance tool, not a
-one-off — run it whenever the picker starts looking thin.
-
-    python scripts/validate_feeds.py            # all feeds
-    python scripts/validate_feeds.py --bucket curious
-    python scripts/validate_feeds.py --unverified-only
-
-Exit code is 0 only when every checked feed is usable, so it works as a
-CI gate later if you want one.
-"""
+"""Validate configured feeds, returning success only when all are usable."""
 
 from __future__ import annotations
 
@@ -22,7 +11,7 @@ from urllib.parse import urljoin, urlparse
 import feedparser
 import requests
 
-# Run as a script from the repo root, so the package isn't importable yet.
+# Make the package importable when this file is run directly.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.config import (  # noqa: E402
@@ -35,9 +24,7 @@ from src.config import (  # noqa: E402
 
 ACCEPT = "application/rss+xml, application/atom+xml, application/xml, text/xml, */*"
 
-# Matches a <link rel=alternate type=application/rss+xml href=...> tag in
-# a page <head>. Regex over HTML is fragile in general, but this is a
-# throwaway diagnostic, not a parser we depend on at runtime.
+# This diagnostic only needs RSS/Atom alternate links from the page head.
 FEED_LINK_TAG = re.compile(
     r"<link[^>]+application/(?:rss|atom)\+xml[^>]*>", re.IGNORECASE
 )
@@ -53,11 +40,7 @@ def _get(url: str, user_agent: str) -> requests.Response:
 
 
 def discover(feed_url: str) -> list[str]:
-    """Ask the site's homepage which feeds it advertises.
-
-    Used when a URL 404s — the feed usually still exists, just somewhere
-    else. This is what an RSS reader does when you paste a bare domain.
-    """
+    """Return feeds advertised by the site's homepage."""
     parts = urlparse(feed_url)
     homepage = f"{parts.scheme}://{parts.netloc}/"
     try:
@@ -71,7 +54,6 @@ def discover(feed_url: str) -> list[str]:
         match = HREF.search(tag)
         if match:
             found.append(urljoin(homepage, match.group(1)))
-    # Preserve order, drop duplicates.
     return list(dict.fromkeys(found))
 
 
@@ -88,9 +70,7 @@ def check(feed: Feed) -> bool:
             return False
         if response.status_code == 200:
             break
-        # A 403 usually means bot protection reacting to our User-Agent,
-        # so retrying as a browser is worth one attempt. Any other status
-        # won't change based on who's asking.
+        # Retry only bot-protection responses with the browser user agent.
         if response.status_code != 403:
             break
 
@@ -110,9 +90,7 @@ def check(feed: Feed) -> bool:
             print(f"{'':11} └─ try: {candidate}")
         return False
 
-    # bozo means feedparser hit something malformed. Not automatically
-    # fatal — plenty of real feeds are slightly broken but still usable —
-    # so surface it and judge per feed.
+    # Report malformed feeds that still contain usable entries.
     note = f"  bozo: {type(parsed.bozo_exception).__name__}" if parsed.bozo else ""
     title = parsed.feed.get("title", "?")
     print(f"[OK  {n:3}] {label} {title}{note}")

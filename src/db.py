@@ -1,8 +1,4 @@
-"""SQLite persistence for articles, plus the S3 round-trip stub.
-
-The whole state of the app is one SQLite file. Phase 4 wraps it in an S3
-pull/push; until then `s3_backed_db` just hands back a local path.
-"""
+"""Persist articles in SQLite through an S3-ready context manager."""
 
 from __future__ import annotations
 
@@ -21,13 +17,7 @@ STATUS_SENT = "sent"
 
 
 def utcnow() -> str:
-    """Current UTC time as an ISO string with microsecond precision.
-
-    Microseconds are not cosmetic. Tests insert and send dozens of articles
-    inside the same second; with second precision the ORDER BY in
-    last_sent_bucket() has ties and returns an arbitrary row, which makes
-    the anti-repetition tests flake intermittently.
-    """
+    """Return UTC ISO text with microseconds to preserve send ordering."""
     return datetime.now(timezone.utc).isoformat(timespec="microseconds")
 
 
@@ -84,8 +74,6 @@ class ArticleDB:
     def __init__(self, path: str):
         self.path = path
         self.conn = sqlite3.connect(path)
-        # Rows come back as mappings instead of tuples, so we can build
-        # Article objects by name rather than by fragile positional index.
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
         self.conn.commit()
@@ -99,15 +87,8 @@ class ArticleDB:
     def __exit__(self, *exc) -> None:
         self.close()
 
-    # --- writes ---------------------------------------------------------
-
     def upsert_articles(self, articles: Iterable[Article]) -> int:
-        """Insert articles, ignoring any whose url_hash we already hold.
-
-        Returns the number actually inserted. ON CONFLICT DO NOTHING is the
-        dedupe: re-fetching the same feed every day must not resurrect an
-        article we already sent or reset its status.
-        """
+        """Insert new articles without resurrecting existing or sent rows."""
         rows = [
             (
                 a.url_hash, a.url, a.title, a.source, a.bucket,
@@ -139,8 +120,6 @@ class ArticleDB:
         )
         self.conn.commit()
 
-    # --- reads ----------------------------------------------------------
-
     def unsent_articles(
         self,
         buckets: Iterable[str],
@@ -152,8 +131,7 @@ class ArticleDB:
         buckets = list(buckets)
         if not buckets:
             return []
-        # SQLite has no array parameter type, so the IN clause needs one
-        # placeholder per value. The values themselves stay parameterised.
+        # SQLite requires one parameterized placeholder per IN value.
         placeholders = ",".join("?" for _ in buckets)
         sql = f"""
             SELECT * FROM articles
@@ -205,12 +183,7 @@ def s3_backed_db(
     key: str = "state.db",
     local_path: Optional[str] = None,
 ) -> Iterator[ArticleDB]:
-    """Yield an ArticleDB, optionally round-tripped through S3.
-
-    Phase 2 stub: `bucket` is ignored. Phase 4 fills in the download on
-    entry and upload on exit. Written as a context manager now so the
-    call sites never have to change.
-    """
+    """Yield a local ArticleDB; S3 round-tripping is not implemented yet."""
     if local_path is None:
         fd, local_path = tempfile.mkstemp(suffix=".db")
         os.close(fd)

@@ -34,7 +34,7 @@ def test_unicode_words_are_counted():
 
 def test_punctuation_does_not_inflate_count():
     assert word_count("Hello, world!") == 2
-    assert word_count("one — two") == 2       # bare em dash is not a word
+    assert word_count("one — two") == 2
     assert word_count("...") == 0
     assert word_count("  spaced   out  ") == 2
 

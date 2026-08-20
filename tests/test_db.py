@@ -8,11 +8,7 @@ from src.db import Article, ArticleDB, days_ago, s3_backed_db, utcnow
 
 @pytest.fixture
 def db():
-    """A real SQLite file on disk, deleted after each test.
-
-    A file rather than :memory: because Phase 4 ships this file to S3;
-    testing against the same mechanism the runtime uses avoids surprises.
-    """
+    """Yield the same file-backed SQLite mechanism used at runtime."""
     fd, path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
     database = ArticleDB(path)
@@ -104,12 +100,7 @@ def test_last_sent_bucket_returns_none_when_nothing_sent(db):
 
 
 def test_last_sent_bucket_returns_most_recent(db):
-    """Sends happen inside the same second here.
-
-    This is exactly the case microsecond timestamps exist for. With
-    second precision the ORDER BY would tie and this assertion would
-    pass or fail at random.
-    """
+    """Microsecond timestamps must order sends made within one second."""
     db.upsert_articles([
         make_article("a", bucket="ai"),
         make_article("b", bucket="finance"),

@@ -1,27 +1,25 @@
-# estimate reading time from article rext. 
-from __future__ import annotations 
+"""Estimate reading time from article text."""
+
+from __future__ import annotations
 
 import math
-import re 
+import re
 
 from src.config import WORDS_PER_MINUTE
 
-# A token counts as a word only if it contains at least one alphanumeric
-# character. [^\W_] means "word character, but not underscore" — which is
-# alphanumerics across all Unicode scripts, not just ASCII.
+# Match alphanumeric characters across all Unicode scripts, excluding underscores.
 _HAS_ALNUM = re.compile(r"[^\W_]", re.UNICODE)
 
 
-def word_count(text:str | None) -> int:
-    # count words in text. none and empty sting both return 0
+def word_count(text: str | None) -> int:
+    """Count whitespace-delimited tokens containing an alphanumeric character."""
     if not text:
         return 0
     return sum(1 for token in text.split() if _HAS_ALNUM.search(token))
 
-def estimate_minutes(text:str | None) -> int:
-    # reading time in whole mins, rounded up. 
-    # floor of 1 for any real text. 
-    words=word_count(text)
+def estimate_minutes(text: str | None) -> int:
+    """Return whole reading minutes, with a minimum of one for nonempty text."""
+    words = word_count(text)
     if words == 0:
         return 0
-    return max(1, math.ceil(words /  WORDS_PER_MINUTE))
+    return max(1, math.ceil(words / WORDS_PER_MINUTE))
