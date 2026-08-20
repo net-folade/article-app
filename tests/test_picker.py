@@ -7,7 +7,11 @@ import pytest
 
 from src.config import CORE_BUCKET_WEIGHTS, WILDCARD_BUCKETS
 from src.db import Article, ArticleDB, days_ago, utcnow
-from src.picker import choose_core_bucket, pick_article
+from src.picker import (
+    choose_core_bucket,
+    core_buckets_in_weighted_order,
+    pick_article,
+)
 
 ALL_BUCKETS = list(CORE_BUCKET_WEIGHTS) + list(WILDCARD_BUCKETS)
 
@@ -161,3 +165,70 @@ def test_sent_articles_are_never_resurfaced(db):
         first = pick_article(db, rng)
     db.mark_sent(first.url_hash)
     assert all(pick_article(db, rng) is None for _ in range(30))
+
+
+# --- bucket fall-through ------------------------------------------------
+
+
+def test_weighted_order_yields_every_core_bucket_once():
+    order = list(core_buckets_in_weighted_order(random.Random(8)))
+    assert sorted(order) == sorted(CORE_BUCKET_WEIGHTS)
+
+
+def test_weighted_order_omits_excluded_bucket():
+    rng = random.Random(8)
+    for _ in range(100):
+        order = list(core_buckets_in_weighted_order(rng, exclude="stories"))
+        assert "stories" not in order
+        assert len(order) == len(CORE_BUCKET_WEIGHTS) - 1
+
+
+def test_falls_through_when_chosen_core_bucket_is_empty(db):
+    """cloud is 0.10 of the core path, so ~90% of rolls start elsewhere.
+
+    Before the fall-through those rolls returned None and the morning
+    produced no notification at all.
+    """
+    stock(db, per_bucket=40, buckets=["cloud"])
+    rng = random.Random(17)
+    for _ in range(50):
+        picked = pick_article(db, rng)
+        assert picked is not None
+        assert picked.bucket == "cloud"
+
+
+def test_core_path_falls_through_to_wildcard_pool(db):
+    """Nothing in any core bucket: the 70% path has to reach wildcard."""
+    stock(db, per_bucket=20, buckets=["essays"])
+    rng = random.Random(21)
+    for _ in range(50):
+        picked = pick_article(db, rng)
+        assert picked is not None
+        assert picked.bucket == "essays"
+
+
+def test_fall_through_still_respects_anti_repetition(db):
+    """Exclusion has to hold down the whole chain, not just the first roll."""
+    stock(db, per_bucket=60, buckets=["ai", "cloud"])
+    rng = random.Random(31)
+    previous = None
+    for _ in range(40):
+        picked = pick_article(db, rng)
+        assert picked is not None
+        assert picked.bucket != previous
+        db.mark_sent(picked.url_hash)
+        previous = picked.bucket
+
+
+def test_returns_none_rather_than_repeating_a_core_bucket(db):
+    """The deliberate limit of the fall-through.
+
+    One stocked bucket, just sent. Anti-repetition rules it out, nothing
+    else has anything, so today is a no-article day. Sending a second
+    cloud piece in a row would break a PROJECT.md principle to avoid it.
+    """
+    stock(db, per_bucket=5, buckets=["cloud"])
+    first = pick_article(db, random.Random(2))
+    assert first.bucket == "cloud"
+    db.mark_sent(first.url_hash)
+    assert pick_article(db, random.Random(2)) is None
