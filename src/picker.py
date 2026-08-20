@@ -1,8 +1,4 @@
-"""The article selection algorithm.
-
-Deliberately has no memory beyond the DB: no personalisation, no learning,
-no signal from what was tapped. Surprise is the product.
-"""
+"""Select an article using only persisted send history."""
 
 from __future__ import annotations
 
@@ -25,12 +21,7 @@ from src.db import Article, ArticleDB
 def choose_core_bucket(
     rng: random.Random, exclude: Optional[str] = None
 ) -> str:
-    """Weighted pick from CORE_BUCKET_WEIGHTS, optionally excluding one.
-
-    Excluding renormalises across what's left rather than re-rolling in a
-    loop — a loop would terminate eventually but has no bound, and the
-    relative weights of the survivors are identical either way.
-    """
+    """Choose a weighted core bucket, optionally excluding one."""
     buckets = list(CORE_BUCKET_WEIGHTS)
     weights = [CORE_BUCKET_WEIGHTS[b] for b in buckets]
 
@@ -45,15 +36,7 @@ def choose_core_bucket(
 def core_buckets_in_weighted_order(
     rng: random.Random, exclude: Optional[str] = None
 ) -> Iterator[str]:
-    """Yield every core bucket, weighted-random, without replacement.
-
-    The first bucket comes out with exactly the configured weights, so
-    the distribution is unchanged on any day the first choice has an
-    article. The rest of the sequence only matters when it doesn't.
-
-    Lazy on purpose: a caller that stops after the first bucket consumes
-    exactly one draw from `rng`, same as choose_core_bucket did.
-    """
+    """Yield core buckets in weighted-random order without replacement."""
     remaining = {
         b: w for b, w in CORE_BUCKET_WEIGHTS.items() if b != exclude
     }
@@ -68,20 +51,10 @@ def core_buckets_in_weighted_order(
 def pick_article(
     db: ArticleDB, rng: Optional[random.Random] = None
 ) -> Optional[Article]:
-    """Choose today's article, or None if nothing anywhere qualifies.
-
-    Buckets are tried in order until one yields a candidate. A thin
-    bucket used to mean no notification at all that morning: the roll
-    landed on it, both freshness windows came back empty, and the
-    function returned None while other buckets sat full. Now an empty
-    bucket costs a fall-through, not the day.
-    """
+    """Choose an eligible article, falling through empty buckets."""
     rng = rng or random.Random()
 
-    # Anti-repetition: never the same core bucket two days running. It
-    # holds across the whole fall-through chain, not just the first roll
-    # — otherwise a thin bucket would quietly reintroduce the repeats.
-    # Only applies to core; no core bucket shares a wildcard's name.
+    # Exclude yesterday's core bucket throughout the fallback chain.
     last = db.last_sent_bucket()
     wildcard_pool = list(WILDCARD_BUCKETS)
     core_pools = ([b] for b in core_buckets_in_weighted_order(rng, exclude=last))
@@ -94,18 +67,11 @@ def pick_article(
     capped = db.sources_at_cap()
 
     for buckets in attempts:
-        # Try fresh first; widen the window only if that comes back
-        # empty. Both windows are exhausted for a bucket before moving
-        # on, so a slightly stale article from the bucket we actually
-        # rolled beats a fresh one from a bucket we didn't.
+        # Exhaust both freshness windows before falling through.
         for fresh_days in (FRESHNESS_DAYS, FALLBACK_FRESHNESS_DAYS):
             candidates = db.unsent_articles(
                 buckets, MIN_READ_MINUTES, MAX_READ_MINUTES, fresh_days
             )
-            # Source cap is a post-filter, not part of the SQL. It
-            # depends on send history rather than article attributes, and
-            # applying it after keeps the query about the article and the
-            # cap about the source.
             candidates = [a for a in candidates if a.source not in capped]
             if candidates:
                 return rng.choice(candidates)

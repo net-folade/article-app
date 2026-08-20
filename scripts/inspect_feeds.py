@@ -1,15 +1,4 @@
-"""Measure what text each feed actually gives us, and what that means
-for the 5-15 minute read filter.
-
-The question this answers: how many of our feeds publish full article
-text, and how many only publish a teaser? A teaser produces a wrong
-read_minutes, which silently excludes the article from every pick. This
-tells us which feeds are real contributors and which are decoration.
-
-    python scripts/inspect_feeds.py
-    python scripts/inspect_feeds.py --bucket curious
-    python scripts/inspect_feeds.py --verbose      # per-entry detail
-"""
+"""Measure feed text and its fit within the configured reading-time range."""
 
 from __future__ import annotations
 
@@ -43,11 +32,7 @@ WHITESPACE = re.compile(r"\s+")
 
 
 def strip_html(raw: str) -> str:
-    """Crude HTML -> text. Good enough for counting words.
-
-    Order matters: unescape after stripping tags, or an escaped &lt;p&gt;
-    in the body becomes a real tag and then gets removed.
-    """
+    """Convert HTML to text, unescaping only after tags are removed."""
     if not raw:
         return ""
     text = TAG.sub(" ", raw)
@@ -56,14 +41,8 @@ def strip_html(raw: str) -> str:
 
 
 def extract(entry) -> tuple[str, str]:
-    """Return (source_field, text) for one feed entry.
-
-    'content' is the full article body when a publisher provides it.
-    'summary' is the teaser. Preferring content is the whole point —
-    the fallback exists so we can measure how often it's all we get.
-    """
+    """Return the preferred source field and text for a feed entry."""
     if entry.get("content"):
-        # A list; the first item is the body in practice.
         return "content", strip_html(entry.content[0].get("value", ""))
     if entry.get("summary"):
         return "summary", strip_html(entry.summary)
@@ -112,8 +91,6 @@ def inspect(feed, verbose: bool = False) -> dict | None:
     n = len(parsed.entries)
     median = int(statistics.median(counts)) if counts else 0
 
-    # A feed is only useful if some of its entries land inside the read
-    # filter. Everything else is rows in the DB that never get picked.
     pct = (in_range / n * 100) if n else 0
     verdict = "GOOD" if pct >= 30 else ("THIN" if pct > 0 else "DEAD")
 

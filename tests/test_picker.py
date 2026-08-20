@@ -39,12 +39,7 @@ def article(url_hash, bucket, source=None, read_minutes=8, fetched_at=None):
 
 
 def stock(db, per_bucket=40, buckets=None, **kw):
-    """Fill every bucket with articles, each from a unique source.
-
-    Unique sources matter: with a shared source the 3-per-30-days cap
-    drains the pool after three picks and the statistical tests measure
-    the cap instead of the thing they claim to measure.
-    """
+    """Fill buckets with unique-source articles to avoid the source cap."""
     buckets = buckets or ALL_BUCKETS
     rows = [
         article(f"{b}-{i}", b, **kw)
@@ -52,9 +47,6 @@ def stock(db, per_bucket=40, buckets=None, **kw):
         for i in range(per_bucket)
     ]
     db.upsert_articles(rows)
-
-
-# --- statistical --------------------------------------------------------
 
 
 def test_wildcard_rate_is_30_percent_over_1000_runs(db):
@@ -89,9 +81,6 @@ def test_choose_core_bucket_never_returns_excluded():
     )
 
 
-# --- anti-repetition ----------------------------------------------------
-
-
 def test_anti_repetition_no_back_to_back_core_buckets(db):
     stock(db, per_bucket=40)
     rng = random.Random(99)
@@ -107,8 +96,6 @@ def test_anti_repetition_no_back_to_back_core_buckets(db):
         db.mark_sent(picked.url_hash)
         previous = picked.bucket
 
-
-# --- filters ------------------------------------------------------------
 
 def test_returns_none_when_db_completely_empty(db):
     assert pick_article(db, random.Random(0)) is None
@@ -167,9 +154,6 @@ def test_sent_articles_are_never_resurfaced(db):
     assert all(pick_article(db, rng) is None for _ in range(30))
 
 
-# --- bucket fall-through ------------------------------------------------
-
-
 def test_weighted_order_yields_every_core_bucket_once():
     order = list(core_buckets_in_weighted_order(random.Random(8)))
     assert sorted(order) == sorted(CORE_BUCKET_WEIGHTS)
@@ -184,11 +168,7 @@ def test_weighted_order_omits_excluded_bucket():
 
 
 def test_falls_through_when_chosen_core_bucket_is_empty(db):
-    """cloud is 0.10 of the core path, so ~90% of rolls start elsewhere.
-
-    Before the fall-through those rolls returned None and the morning
-    produced no notification at all.
-    """
+    """Every roll must reach the only populated core bucket."""
     stock(db, per_bucket=40, buckets=["cloud"])
     rng = random.Random(17)
     for _ in range(50):
@@ -221,12 +201,7 @@ def test_fall_through_still_respects_anti_repetition(db):
 
 
 def test_returns_none_rather_than_repeating_a_core_bucket(db):
-    """The deliberate limit of the fall-through.
-
-    One stocked bucket, just sent. Anti-repetition rules it out, nothing
-    else has anything, so today is a no-article day. Sending a second
-    cloud piece in a row would break a PROJECT.md principle to avoid it.
-    """
+    """Return None when anti-repetition excludes the only populated bucket."""
     stock(db, per_bucket=5, buckets=["cloud"])
     first = pick_article(db, random.Random(2))
     assert first.bucket == "cloud"
