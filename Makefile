@@ -17,3 +17,9 @@ validate-feeds:
 
 inspect-feeds:
 	python scripts/inspect_feeds.py
+
+
+.PHONY: dry-run
+
+dry-run:
+	python scripts/dry_run.py
