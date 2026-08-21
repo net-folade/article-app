@@ -9,12 +9,13 @@ terraform {
   }
 }
 
-locals {
-  # Build the ARN here to avoid a dependency cycle with the role.
-  schedule_arn = "arn:aws:scheduler:${var.region}:${var.account_id}:schedule/${var.schedule_group}/${var.schedule_name}"
+# A dedicated group so the trust policy below scopes to this project alone.
+resource "aws_scheduler_schedule_group" "this" {
+  name = var.schedule_group
+  tags = var.tags
 }
 
-# Allow only this account and schedule to assume the role.
+# Allow only this account, and only schedules in our group, to assume the role.
 data "aws_iam_policy_document" "trust" {
   statement {
     effect  = "Allow"
@@ -34,7 +35,7 @@ data "aws_iam_policy_document" "trust" {
     condition {
       test     = "ArnEquals"
       variable = "aws:SourceArn"
-      values   = [local.schedule_arn]
+      values   = [aws_scheduler_schedule_group.this.arn]
     }
   }
 }
@@ -63,7 +64,7 @@ resource "aws_iam_role_policy" "invoke" {
 
 resource "aws_scheduler_schedule" "this" {
   name       = var.schedule_name
-  group_name = var.schedule_group
+  group_name = aws_scheduler_schedule_group.this.name
 
   # Development stays disabled until invoked manually.
   state = var.schedule_state

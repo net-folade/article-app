@@ -9,13 +9,7 @@ variable "role_name" {
 }
 
 variable "schedule_group" {
-  description = "Scheduler group the schedule belongs to; part of its ARN"
-  type        = string
-  default     = "default"
-}
-
-variable "region" {
-  description = "Region the schedule ARN is composed against"
+  description = "Dedicated scheduler group created by this module; its ARN is what aws:SourceArn pins"
   type        = string
 }
 

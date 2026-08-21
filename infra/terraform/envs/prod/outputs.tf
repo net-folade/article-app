@@ -37,3 +37,8 @@ output "scheduler_role_name" {
   description = "Name of the Scheduler execution role"
   value       = module.scheduler.role_name
 }
+
+output "schedule_group_name" {
+  description = "Dedicated scheduler group scoping the execution role trust policy"
+  value       = module.scheduler.schedule_group_name
+}

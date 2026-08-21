@@ -10,6 +10,7 @@ locals {
   function_role_name  = "${local.name_prefix}-picker-role"
   log_group_name      = "/aws/lambda/${local.name_prefix}-picker"
   schedule_name       = "${local.name_prefix}-daily"
+  schedule_group_name = local.name_prefix
   scheduler_role_name = "${local.name_prefix}-scheduler-role"
 
   tags = {
@@ -56,10 +57,10 @@ module "lambda" {
 module "scheduler" {
   source = "../../modules/scheduler"
 
-  schedule_name = local.schedule_name
-  role_name     = local.scheduler_role_name
+  schedule_name  = local.schedule_name
+  role_name      = local.scheduler_role_name
+  schedule_group = local.schedule_group_name
 
-  region     = var.region
   account_id = data.aws_caller_identity.current.account_id
 
   function_arn        = module.lambda.function_arn
