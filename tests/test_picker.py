@@ -18,7 +18,7 @@ ALL_BUCKETS = list(CORE_BUCKET_WEIGHTS) + list(WILDCARD_BUCKETS)
 
 @pytest.fixture
 def db():
-    fd, path = tempfile.mkstemp(suffix=".db")
+    fd, path = tempfile.mkstemp(suffix='.db')
     os.close(fd)
     database = ArticleDB(path)
     yield database
@@ -29,9 +29,9 @@ def db():
 def article(url_hash, bucket, source=None, read_minutes=8, fetched_at=None):
     return Article(
         url_hash=url_hash,
-        url=f"https://example.com/{url_hash}",
-        title=f"Article {url_hash}",
-        source=source or f"src-{url_hash}",
+        url=f'https://example.com/{url_hash}',
+        title=f'Article {url_hash}',
+        source=source or f'src-{url_hash}',
         bucket=bucket,
         read_minutes=read_minutes,
         fetched_at=fetched_at or utcnow(),
@@ -42,7 +42,7 @@ def stock(db, per_bucket=40, buckets=None, **kw):
     """Fill buckets with unique-source articles to avoid the source cap."""
     buckets = buckets or ALL_BUCKETS
     rows = [
-        article(f"{b}-{i}", b, **kw)
+        article(f'{b}-{i}', b, **kw)
         for b in buckets
         for i in range(per_bucket)
     ]
@@ -77,7 +77,7 @@ def test_core_bucket_weights_respected_over_many_runs(db):
 def test_choose_core_bucket_never_returns_excluded():
     rng = random.Random(1)
     assert all(
-        choose_core_bucket(rng, exclude="ai") != "ai" for _ in range(500)
+        choose_core_bucket(rng, exclude='ai') != 'ai' for _ in range(500)
     )
 
 
@@ -103,15 +103,15 @@ def test_returns_none_when_db_completely_empty(db):
 
 def test_read_time_filter_excludes_out_of_range(db):
     db.upsert_articles([
-        article("too-short", "ai", read_minutes=2),
-        article("too-long", "ai", read_minutes=30),
-        article("just-right", "ai", read_minutes=9),
+        article('too-short', 'ai', read_minutes=2),
+        article('too-long', 'ai', read_minutes=30),
+        article('just-right', 'ai', read_minutes=9),
     ])
     rng = random.Random(3)
     for _ in range(60):
         picked = pick_article(db, rng)
         if picked is not None:
-            assert picked.url_hash == "just-right"
+            assert picked.url_hash == 'just-right'
 
 
 def test_fallback_widens_when_no_fresh_articles_in_bucket(db):
@@ -129,23 +129,23 @@ def test_nothing_picked_when_all_articles_beyond_fallback(db):
 def test_source_cap_prevents_dominance(db):
     """Aeon is already at the cap; its articles must never be picked."""
     for i in range(3):
-        db.upsert_articles([article(f"sent{i}", "essays", source="Aeon")])
-        db.mark_sent(f"sent{i}")
+        db.upsert_articles([article(f'sent{i}', 'essays', source='Aeon')])
+        db.mark_sent(f'sent{i}')
 
     db.upsert_articles([
-        article("aeon-new", "essays", source="Aeon"),
-        article("lrb-new", "essays", source="LRB"),
+        article('aeon-new', 'essays', source='Aeon'),
+        article('lrb-new', 'essays', source='LRB'),
     ])
 
     rng = random.Random(5)
     for _ in range(100):
         picked = pick_article(db, rng)
         if picked is not None:
-            assert picked.source != "Aeon"
+            assert picked.source != 'Aeon'
 
 
 def test_sent_articles_are_never_resurfaced(db):
-    db.upsert_articles([article("only", "ai")])
+    db.upsert_articles([article('only', 'ai')])
     rng = random.Random(2)
     first = None
     while first is None:
@@ -162,34 +162,34 @@ def test_weighted_order_yields_every_core_bucket_once():
 def test_weighted_order_omits_excluded_bucket():
     rng = random.Random(8)
     for _ in range(100):
-        order = list(core_buckets_in_weighted_order(rng, exclude="stories"))
-        assert "stories" not in order
+        order = list(core_buckets_in_weighted_order(rng, exclude='stories'))
+        assert 'stories' not in order
         assert len(order) == len(CORE_BUCKET_WEIGHTS) - 1
 
 
 def test_falls_through_when_chosen_core_bucket_is_empty(db):
     """Every roll must reach the only populated core bucket."""
-    stock(db, per_bucket=40, buckets=["cloud"])
+    stock(db, per_bucket=40, buckets=['cloud'])
     rng = random.Random(17)
     for _ in range(50):
         picked = pick_article(db, rng)
         assert picked is not None
-        assert picked.bucket == "cloud"
+        assert picked.bucket == 'cloud'
 
 
 def test_core_path_falls_through_to_wildcard_pool(db):
     """Nothing in any core bucket: the 70% path has to reach wildcard."""
-    stock(db, per_bucket=20, buckets=["essays"])
+    stock(db, per_bucket=20, buckets=['essays'])
     rng = random.Random(21)
     for _ in range(50):
         picked = pick_article(db, rng)
         assert picked is not None
-        assert picked.bucket == "essays"
+        assert picked.bucket == 'essays'
 
 
 def test_fall_through_still_respects_anti_repetition(db):
     """Exclusion has to hold down the whole chain, not just the first roll."""
-    stock(db, per_bucket=60, buckets=["ai", "cloud"])
+    stock(db, per_bucket=60, buckets=['ai', 'cloud'])
     rng = random.Random(31)
     previous = None
     for _ in range(40):
@@ -202,8 +202,8 @@ def test_fall_through_still_respects_anti_repetition(db):
 
 def test_returns_none_rather_than_repeating_a_core_bucket(db):
     """Return None when anti-repetition excludes the only populated bucket."""
-    stock(db, per_bucket=5, buckets=["cloud"])
+    stock(db, per_bucket=5, buckets=['cloud'])
     first = pick_article(db, random.Random(2))
-    assert first.bucket == "cloud"
+    assert first.bucket == 'cloud'
     db.mark_sent(first.url_hash)
     assert pick_article(db, random.Random(2)) is None

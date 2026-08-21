@@ -14,6 +14,6 @@ output "schedule_state" {
 }
 
 output "role_name" {
-  description = "Name of the scheduler role, for the IAM audit commands in SECURITY.md"
+  description = "Name of the Scheduler execution role"
   value       = aws_iam_role.scheduler.name
 }

@@ -29,11 +29,11 @@ output "schedule_state" {
 }
 
 output "lambda_role_name" {
-  description = "Execution role name, for the audit commands in SECURITY.md"
+  description = "Name of the Lambda execution role"
   value       = module.lambda.role_name
 }
 
 output "scheduler_role_name" {
-  description = "Scheduler role name, for the audit commands in SECURITY.md"
+  description = "Name of the Scheduler execution role"
   value       = module.scheduler.role_name
 }

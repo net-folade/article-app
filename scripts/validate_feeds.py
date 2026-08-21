@@ -22,11 +22,11 @@ from src.config import (  # noqa: E402
     Feed,
 )
 
-ACCEPT = "application/rss+xml, application/atom+xml, application/xml, text/xml, */*"
+ACCEPT = 'application/rss+xml, application/atom+xml, application/xml, text/xml, */*'
 
 # This diagnostic only needs RSS/Atom alternate links from the page head.
 FEED_LINK_TAG = re.compile(
-    r"<link[^>]+application/(?:rss|atom)\+xml[^>]*>", re.IGNORECASE
+    r'<link[^>]+application/(?:rss|atom)\+xml[^>]*>', re.IGNORECASE
 )
 HREF = re.compile(r"""href=["']([^"']+)["']""", re.IGNORECASE)
 
@@ -34,7 +34,7 @@ HREF = re.compile(r"""href=["']([^"']+)["']""", re.IGNORECASE)
 def _get(url: str, user_agent: str) -> requests.Response:
     return requests.get(
         url,
-        headers={"User-Agent": user_agent, "Accept": ACCEPT},
+        headers={'User-Agent': user_agent, 'Accept': ACCEPT},
         timeout=FETCH_TIMEOUT_SECONDS,
     )
 
@@ -42,7 +42,7 @@ def _get(url: str, user_agent: str) -> requests.Response:
 def discover(feed_url: str) -> list[str]:
     """Return feeds advertised by the site's homepage."""
     parts = urlparse(feed_url)
-    homepage = f"{parts.scheme}://{parts.netloc}/"
+    homepage = f'{parts.scheme}://{parts.netloc}/'
     try:
         r = _get(homepage, BROWSER_USER_AGENT)
         r.raise_for_status()
@@ -59,14 +59,14 @@ def discover(feed_url: str) -> list[str]:
 
 def check(feed: Feed) -> bool:
     """Fetch, parse, and report. True only if the feed is usable."""
-    label = f"{feed.bucket:<10} {feed.name:<22}"
+    label = f'{feed.bucket:<10} {feed.name:<22}'
 
     response = None
     for user_agent in (USER_AGENT, BROWSER_USER_AGENT):
         try:
             response = _get(feed.url, user_agent)
         except requests.RequestException as e:
-            print(f"[FAILED ] {label} {type(e).__name__}: {e}")
+            print(f'[FAILED ] {label} {type(e).__name__}: {e}')
             return False
         if response.status_code == 200:
             break
@@ -75,7 +75,7 @@ def check(feed: Feed) -> bool:
             break
 
     if response.status_code != 200:
-        print(f"[HTTP{response.status_code:4}] {label} {feed.url}")
+        print(f'[HTTP{response.status_code:4}] {label} {feed.url}')
         if response.status_code == 404:
             for candidate in discover(feed.url)[:3]:
                 print(f"{'':11} └─ try: {candidate}")
@@ -85,25 +85,25 @@ def check(feed: Feed) -> bool:
     n = len(parsed.entries)
 
     if n == 0:
-        print(f"[EMPTY  ] {label} parsed, no entries")
+        print(f'[EMPTY  ] {label} parsed, no entries')
         for candidate in discover(feed.url)[:3]:
             print(f"{'':11} └─ try: {candidate}")
         return False
 
     # Report malformed feeds that still contain usable entries.
-    note = f"  bozo: {type(parsed.bozo_exception).__name__}" if parsed.bozo else ""
-    title = parsed.feed.get("title", "?")
-    print(f"[OK  {n:3}] {label} {title}{note}")
+    note = f'  bozo: {type(parsed.bozo_exception).__name__}' if parsed.bozo else ''
+    title = parsed.feed.get('title', '?')
+    print(f'[OK  {n:3}] {label} {title}{note}')
     return True
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--bucket", help="check only one bucket")
+    ap.add_argument('--bucket', help='check only one bucket')
     ap.add_argument(
-        "--unverified-only",
-        action="store_true",
-        help="skip feeds already marked verified in config",
+        '--unverified-only',
+        action='store_true',
+        help='skip feeds already marked verified in config',
     )
     args = ap.parse_args()
 
@@ -114,18 +114,18 @@ def main() -> int:
         feeds = [f for f in feeds if not f.verified]
 
     if not feeds:
-        print("No feeds matched.")
+        print('No feeds matched.')
         return 1
 
     results = {f.name: check(f) for f in feeds}
     ok = sum(results.values())
-    print(f"\n{ok}/{len(results)} usable")
+    print(f'\n{ok}/{len(results)} usable')
 
     broken = [name for name, good in results.items() if not good]
     if broken:
-        print("Remove or replace: " + ", ".join(broken))
+        print('Remove or replace: ' + ', '.join(broken))
     return 0 if not broken else 1
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     sys.exit(main())

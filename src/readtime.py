@@ -8,7 +8,7 @@ import re
 from src.config import WORDS_PER_MINUTE
 
 # Match alphanumeric characters across all Unicode scripts, excluding underscores.
-_HAS_ALNUM = re.compile(r"[^\W_]", re.UNICODE)
+_HAS_ALNUM = re.compile(r'[^\W_]', re.UNICODE)
 
 
 def word_count(text: str | None) -> int:

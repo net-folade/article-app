@@ -12,19 +12,19 @@ from typing import Iterable, Iterator, Optional
 
 from src.config import PER_SOURCE_MONTHLY_CAP, SOURCE_CAP_WINDOW_DAYS
 
-STATUS_NEW = "new"
-STATUS_SENT = "sent"
+STATUS_NEW = 'new'
+STATUS_SENT = 'sent'
 
 
 def utcnow() -> str:
     """Return UTC ISO text with microseconds to preserve send ordering."""
-    return datetime.now(timezone.utc).isoformat(timespec="microseconds")
+    return datetime.now(timezone.utc).isoformat(timespec='microseconds')
 
 
 def days_ago(days: int) -> str:
     """ISO timestamp `days` in the past. Used for freshness cutoffs."""
     return (datetime.now(timezone.utc) - timedelta(days=days)).isoformat(
-        timespec="microseconds"
+        timespec='microseconds'
     )
 
 
@@ -38,7 +38,7 @@ class Article:
     source: str
     bucket: str
     read_minutes: int
-    body_excerpt: str = ""
+    body_excerpt: str = ''
     published_at: Optional[str] = None
     fetched_at: str = field(default_factory=utcnow)
     status: str = STATUS_NEW
@@ -81,7 +81,7 @@ class ArticleDB:
     def close(self) -> None:
         self.conn.close()
 
-    def __enter__(self) -> "ArticleDB":
+    def __enter__(self) -> 'ArticleDB':
         return self
 
     def __exit__(self, *exc) -> None:
@@ -115,7 +115,7 @@ class ArticleDB:
 
     def mark_sent(self, url_hash: str) -> None:
         self.conn.execute(
-            "UPDATE articles SET status = ?, sent_at = ? WHERE url_hash = ?",
+            'UPDATE articles SET status = ?, sent_at = ? WHERE url_hash = ?',
             (STATUS_SENT, utcnow(), url_hash),
         )
         self.conn.commit()
@@ -132,7 +132,7 @@ class ArticleDB:
         if not buckets:
             return []
         # SQLite requires one parameterized placeholder per IN value.
-        placeholders = ",".join("?" for _ in buckets)
+        placeholders = ','.join('?' for _ in buckets)
         sql = f"""
             SELECT * FROM articles
              WHERE status = ?
@@ -158,7 +158,7 @@ class ArticleDB:
             """,
             (STATUS_SENT,),
         ).fetchone()
-        return row["bucket"] if row else None
+        return row['bucket'] if row else None
 
     def source_picks_last_30_days(self) -> dict[str, int]:
         """How many times each source has been sent inside the cap window."""
@@ -170,7 +170,7 @@ class ArticleDB:
             """,
             (STATUS_SENT, days_ago(SOURCE_CAP_WINDOW_DAYS)),
         ).fetchall()
-        return {row["source"]: row["n"] for row in rows}
+        return {row['source']: row['n'] for row in rows}
 
     def sources_at_cap(self) -> set[str]:
         counts = self.source_picks_last_30_days()
@@ -181,7 +181,7 @@ def _s3_client():
     """Create an S3 client only when needed."""
     import boto3
 
-    return boto3.client("s3")
+    return boto3.client('s3')
 
 
 def _download_state(client, bucket: str, key: str, local_path: str) -> bool:
@@ -191,9 +191,9 @@ def _download_state(client, bucket: str, key: str, local_path: str) -> bool:
     try:
         client.download_file(bucket, key, local_path)
     except ClientError as exc:
-        code = exc.response.get("Error", {}).get("Code")
+        code = exc.response.get('Error', {}).get('Code')
         # A missing file is normal on the first run. Raise all other errors.
-        if code in ("404", "NoSuchKey"):
+        if code in ('404', 'NoSuchKey'):
             return False
         raise
     return True
@@ -202,12 +202,12 @@ def _download_state(client, bucket: str, key: str, local_path: str) -> bool:
 @contextlib.contextmanager
 def s3_backed_db(
     bucket: Optional[str] = None,
-    key: str = "state.db",
+    key: str = 'state.db',
     local_path: Optional[str] = None,
 ) -> Iterator[ArticleDB]:
     """Use a local database and sync it with S3 when given a bucket."""
     if local_path is None:
-        fd, local_path = tempfile.mkstemp(suffix=".db")
+        fd, local_path = tempfile.mkstemp(suffix='.db')
         os.close(fd)
         cleanup = True
     else:
