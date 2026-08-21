@@ -72,7 +72,6 @@ FEEDS = [
     Feed("Atlas Obscura", "https://www.atlasobscura.com/feeds/latest", "curious", True, needs_page_fetch=True),
     Feed("Nautilus", "https://nautil.us/feed/", "curious", True, needs_page_fetch=True),
     Feed("Undark", "https://undark.org/feed/", "curious", True, needs_page_fetch=True),
-    Feed("Sapiens", "https://www.sapiens.org/feed/", "curious", True),
     Feed("JSTOR Daily", "https://daily.jstor.org/feed/", "curious", True),
     Feed("Common Edge", "https://commonedge.org/feed/", "curious", True),
     Feed("Comment Magazine", "https://comment.org/feed/", "curious", True, needs_page_fetch=True),
@@ -93,7 +92,6 @@ FEEDS = [
 
     Feed("Import AI", "https://importai.substack.com/feed", "ai", True),
     Feed("One Useful Thing", "https://www.oneusefulthing.org/feed", "ai", True),
-    Feed("The Gradient", "https://thegradient.pub/rss/", "ai", True),
     Feed("Simon Willison", "https://simonwillison.net/atom/everything/", "ai", True, needs_page_fetch=True),
 
     Feed("Pragmatic Engineer", "https://newsletter.pragmaticengineer.com/feed", "tech", True),
@@ -101,7 +99,6 @@ FEEDS = [
 
     Feed("AWS Architecture", "https://aws.amazon.com/blogs/architecture/feed/", "cloud", True),
     Feed("The New Stack", "https://thenewstack.io/feed/", "cloud", True),
-    Feed("Last Week in AWS", "https://www.lastweekinaws.com/feed/", "cloud", True),
     Feed("CNCF", "https://www.cncf.io/feed/", "cloud", True),
 
     Feed("Of Dollars And Data", "https://ofdollarsanddata.com/feed/", "finance", True),
