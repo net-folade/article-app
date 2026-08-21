@@ -3,7 +3,14 @@ import tempfile
 
 import pytest
 
-from src.db import Article, ArticleDB, days_ago, s3_backed_db, utcnow
+from src.db import (
+    Article,
+    ArticleDB,
+    _download_state,
+    days_ago,
+    s3_backed_db,
+    utcnow,
+)
 
 
 @pytest.fixture
@@ -135,3 +142,34 @@ def test_sources_at_cap_identifies_over_limit(db):
 def test_s3_backed_db_yields_working_db_when_bucket_is_none():
     with s3_backed_db(bucket=None) as database:
         assert database.upsert_articles([make_article('a')]) == 1
+
+
+class _MissingObjectClient:
+    """Stand-in S3 client that fails every download with one error code."""
+
+    def __init__(self, code: str):
+        self.code = code
+
+    def download_file(self, bucket, key, local_path):
+        from botocore.exceptions import ClientError
+
+        raise ClientError({'Error': {'Code': self.code}}, 'HeadObject')
+
+
+def test_download_state_returns_false_when_object_missing(tmp_path):
+    client = _MissingObjectClient('404')
+    assert _download_state(client, 'b', 'state.db', str(tmp_path / 's.db')) is False
+
+
+def test_download_state_treats_403_as_missing_state(tmp_path):
+    # No s3:ListBucket means S3 reports a missing key as 403, not 404.
+    client = _MissingObjectClient('403')
+    assert _download_state(client, 'b', 'state.db', str(tmp_path / 's.db')) is False
+
+
+def test_download_state_raises_on_other_errors(tmp_path):
+    from botocore.exceptions import ClientError
+
+    client = _MissingObjectClient('InternalError')
+    with pytest.raises(ClientError):
+        _download_state(client, 'b', 'state.db', str(tmp_path / 's.db'))

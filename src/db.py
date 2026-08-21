@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import logging
 import os
 import sqlite3
 import tempfile
@@ -11,6 +12,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Iterable, Iterator, Optional
 
 from src.config import PER_SOURCE_MONTHLY_CAP, SOURCE_CAP_WINDOW_DAYS
+
+log = logging.getLogger(__name__)
 
 STATUS_NEW = 'new'
 STATUS_SENT = 'sent'
@@ -194,6 +197,17 @@ def _download_state(client, bucket: str, key: str, local_path: str) -> bool:
         code = exc.response.get('Error', {}).get('Code')
         # A missing file is normal on the first run. Raise all other errors.
         if code in ('404', 'NoSuchKey'):
+            return False
+        # The Lambda role has GetObject on this key but no ListBucket, so S3
+        # hides a missing object behind 403 instead of 404. Treat it as absent;
+        # a genuine permission problem still fails loudly on the upload.
+        if code in ('403', 'AccessDenied'):
+            log.warning(
+                's3://%s/%s returned 403; treating it as absent. '
+                'A real permission error will surface on upload.',
+                bucket,
+                key,
+            )
             return False
         raise
     return True
