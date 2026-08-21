@@ -9,5 +9,7 @@ __pycache__/
 *.zip
 terraform.tfvars
 CLAUDE.md
-PROJECT.md
-PROGRESS.md
+project.md
+progress.md
+archive.md
+build/
