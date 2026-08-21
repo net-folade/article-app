@@ -135,9 +135,3 @@ def test_sources_at_cap_identifies_over_limit(db):
 def test_s3_backed_db_yields_working_db_when_bucket_is_none():
     with s3_backed_db(bucket=None) as database:
         assert database.upsert_articles([make_article("a")]) == 1
-
-
-def test_s3_backed_db_rejects_bucket_until_phase_4():
-    with pytest.raises(NotImplementedError):
-        with s3_backed_db(bucket="some-bucket"):
-            pass
