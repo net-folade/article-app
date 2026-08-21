@@ -82,6 +82,11 @@ package compatibility and AWS permission errors.
 The workload is small and is designed for very low AWS usage, but actual cost
 depends on the account's current AWS pricing and free-tier eligibility.
 
+### Annual cost estimate
+Current architecture: approximately $0–$1.20 per year.
+With 1,000 users on the same ntfy topic: approximately $0–$1.20 per year.
+This assumes one shared daily notification, AWS free allowances, and free ntfy.sh.
+
 See `security.md` for IAM, storage, encryption, secret-handling, and
 vulnerability-reporting details.
 
