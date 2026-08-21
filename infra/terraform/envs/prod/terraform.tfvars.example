@@ -1,0 +1,21 @@
+region      = "us-east-1"
+project     = "article-app"
+environment = "prod"
+
+# Change this globally unique bucket name if needed.
+bucket_suffix = "REPLACE_ME"
+
+# Set the ntfy topic before deploying production.
+ntfy_topic  = "REPLACE_WITH_YOUR_PROD_TOPIC"
+ntfy_server = "https://ntfy.sh"
+
+# Run daily at 07:00 UTC.
+schedule_state      = "ENABLED"
+schedule_expression = "cron(0 7 * * ? *)"
+
+lambda_timeout     = 300
+lambda_memory_size = 512
+
+# Keep production logs longer for troubleshooting.
+log_retention_in_days              = 14
+noncurrent_version_expiration_days = 7

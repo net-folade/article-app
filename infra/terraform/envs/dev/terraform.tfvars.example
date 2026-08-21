@@ -1,0 +1,21 @@
+region      = "us-east-1"
+project     = "article-app"
+environment = "dev"
+
+# Change this globally unique bucket name if needed.
+bucket_suffix = "REPLACE_ME"
+
+# Keep development notifications separate from production.
+ntfy_topic  = "daily-articles-dev-REPLACE_ME"
+ntfy_server = "https://ntfy.sh"
+
+# Run development only with `make invoke`.
+schedule_state      = "DISABLED"
+schedule_expression = "cron(0 7 * * ? *)"
+
+# Match production settings to catch deployment and permission errors.
+lambda_timeout     = 300
+lambda_memory_size = 512
+
+log_retention_in_days              = 7
+noncurrent_version_expiration_days = 7

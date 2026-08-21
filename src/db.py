@@ -177,13 +177,35 @@ class ArticleDB:
         return {s for s, n in counts.items() if n >= PER_SOURCE_MONTHLY_CAP}
 
 
+def _s3_client():
+    """Create an S3 client only when needed."""
+    import boto3
+
+    return boto3.client("s3")
+
+
+def _download_state(client, bucket: str, key: str, local_path: str) -> bool:
+    """Download state.db, or return False when it does not exist."""
+    from botocore.exceptions import ClientError
+
+    try:
+        client.download_file(bucket, key, local_path)
+    except ClientError as exc:
+        code = exc.response.get("Error", {}).get("Code")
+        # A missing file is normal on the first run. Raise all other errors.
+        if code in ("404", "NoSuchKey"):
+            return False
+        raise
+    return True
+
+
 @contextlib.contextmanager
 def s3_backed_db(
     bucket: Optional[str] = None,
     key: str = "state.db",
     local_path: Optional[str] = None,
 ) -> Iterator[ArticleDB]:
-    """Yield a local ArticleDB; S3 round-tripping is not implemented yet."""
+    """Use a local database and sync it with S3 when given a bucket."""
     if local_path is None:
         fd, local_path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
@@ -191,14 +213,22 @@ def s3_backed_db(
     else:
         cleanup = False
 
-    if bucket is not None:
-        raise NotImplementedError("S3 round-trip lands in Phase 4")
+    client = _s3_client() if bucket is not None else None
+    if client is not None:
+        _download_state(client, bucket, key, local_path)
 
     db = ArticleDB(local_path)
+    uploaded = False
     try:
         yield db
-    finally:
+        # Upload only after a successful run.
         db.close()
+        if client is not None:
+            client.upload_file(local_path, bucket, key)
+            uploaded = True
+    finally:
+        if not uploaded:
+            db.close()
         if cleanup:
             with contextlib.suppress(FileNotFoundError):
                 os.remove(local_path)
