@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-05T19:12:14+00:00",
+  "generated_at": "2026-11-05T19:20:50+00:00",
   "articles": [
     {
       "id": "8c416cac2e1213d024fab341361258f4",
@@ -186,9 +186,6 @@
       "read_minutes": 6,
       "published_at": "2026-10-29T13:37:13.000000+00:00",
       "paragraphs": [
-        "Before we start: I’m in SF this week and next, hosting these free-to-attend events (registration required). If you’re in the area, hopefully I'll see you at one of them:",
-        "The Pragmatic Engineer Unplugged: Wednesday (4 Nov), 5pm-7:30pm. With Diogo Almeida (creator of Jev & co-inventor of ChatGPT), and Bryan Cantrill (cofounder and CTO of Oxide). We still have space left, RSVP here.",
-        "System Update: Thursday (5 Nov) 5pm-8pm. We have some last spots left, RSVP here.",
         "An engineer who helped create today’s software engineering curriculum now says to burn down almost all of it. What’s the cause of this contradiction? We find out from the lead author of Software Engineering at Google.",
         "Titus Winters spent more than a decade at Google, where he led its readability program and built Abseil, Google’s open-sourced foundational C++ libraries. He is currently a Senior Principal Scientist at Adobe, where he focuses on developer experience and productivity.",
         "In this episode of The Pragmatic Engineer podcast, Titus and I discuss how his team tackled a massive refactoring project across Google’s 250-million-line C++ codebase, why Google made testing mandatory, and his work on updating the ACM/IEEE undergraduate computer science curriculum guidelines.",

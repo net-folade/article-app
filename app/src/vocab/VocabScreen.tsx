@@ -60,7 +60,7 @@ export default function VocabScreen({ onBack }: Props) {
       contentContainerStyle={styles.page}
     >
       <View style={styles.header}>
-        <TextButton label={reviewing ? 'words' : 'back'} onPress={reviewing ? stopReview : onBack} p={p} />
+        <TextButton label={reviewing ? '‹ words' : '‹ back'} onPress={reviewing ? stopReview : onBack} p={p} />
         {!reviewing && words.length > 0 && (
           <TextButton label="export" onPress={onExport} p={p} />
         )}
@@ -199,7 +199,7 @@ function QuietButton({ label, onPress, p }: { label: string; onPress: () => void
 }
 
 const styles = StyleSheet.create({
-  page: { paddingHorizontal: 28, paddingTop: 16, paddingBottom: 96, flexGrow: 1 },
+  page: { paddingHorizontal: 24, paddingTop: 16, paddingBottom: 96, flexGrow: 1 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 40 },
   textButton: { fontFamily: fonts.sans, fontSize: 15, letterSpacing: 0.3 },
   title: { fontFamily: fonts.serif, fontSize: 34, marginBottom: 28 },
@@ -213,7 +213,7 @@ const styles = StyleSheet.create({
   itemSource: { fontFamily: fonts.sans, fontSize: 13, flexShrink: 1 },
   dots: { flexDirection: 'row', gap: 4 },
   dot: { width: 5, height: 5, borderRadius: 2.5 },
-  card: { flex: 1, justifyContent: 'center', paddingBottom: 80, gap: 24 },
+  card: { paddingTop: 96, gap: 24 },
   counter: { fontFamily: fonts.sans, fontSize: 13, letterSpacing: 0.5 },
   cardWord: { fontFamily: fonts.serif, fontSize: 44, lineHeight: 54 },
   meta: { fontFamily: fonts.sans, fontSize: 13, lineHeight: 19 },
