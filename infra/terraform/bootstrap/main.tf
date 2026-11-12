@@ -4,10 +4,9 @@
 # issuer (the provider below), and each role's trust policy decides which jobs
 # may assume it by matching the token's `sub` claim:
 #
-#   plan         repo:net-folade/article-app:pull_request      read-only
-#                repo:net-folade/article-app:ref:refs/heads/main
-#   deploy-dev   repo:net-folade/article-app:environment:dev   writes article-app-dev-*
-#   deploy-prod  repo:net-folade/article-app:environment:prod  writes article-app-prod-*
+#   plan         <prefix>:pull_request, <prefix>:ref:refs/heads/main   read-only
+#   deploy-dev   <prefix>:environment:dev                             writes article-app-dev-*
+#   deploy-prod  <prefix>:environment:prod                            writes article-app-prod-*
 #
 # CLI equivalent of one assumption: `aws sts assume-role-with-web-identity`.
 #
@@ -17,9 +16,12 @@
 data "aws_caller_identity" "current" {}
 
 locals {
-  account_id   = data.aws_caller_identity.current.account_id
-  region       = "us-east-1"
-  repo         = "net-folade/article-app"
+  account_id = data.aws_caller_identity.current.account_id
+  region     = "us-east-1"
+  # The repo uses GitHub's immutable subject format: owner and repo carry their
+  # numeric IDs, so a rename cannot hand these roles to a different repo.
+  # Source: gh api repos/net-folade/article-app/actions/oidc/customization/sub
+  sub_prefix   = "repo:net-folade@148221490/article-app@1340726485"
   project      = "article-app"
   state_bucket = "terraform-state-145b8d8b"
   oidc_host    = "token.actions.githubusercontent.com"
@@ -54,8 +56,8 @@ data "aws_iam_policy_document" "plan_trust" {
       variable = "${local.oidc_host}:sub"
       # Pull request plans, plus check-prod on main (no environment attached).
       values = [
-        "repo:${local.repo}:pull_request",
-        "repo:${local.repo}:ref:refs/heads/main",
+        "${local.sub_prefix}:pull_request",
+        "${local.sub_prefix}:ref:refs/heads/main",
       ]
     }
   }
@@ -188,7 +190,7 @@ data "aws_iam_policy_document" "deploy_trust" {
     condition {
       test     = "StringEquals"
       variable = "${local.oidc_host}:sub"
-      values   = ["repo:${local.repo}:environment:${each.key}"]
+      values   = ["${local.sub_prefix}:environment:${each.key}"]
     }
   }
 }
