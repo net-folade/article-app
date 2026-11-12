@@ -68,3 +68,16 @@ module "scheduler" {
   schedule_state      = var.schedule_state
   tags                = local.tags
 }
+
+# Prod only: dev's schedule is disabled, so its missed-run alarm would always fire.
+module "monitoring" {
+  source = "../../modules/monitoring"
+
+  name_prefix              = local.name_prefix
+  region                   = var.region
+  function_name            = module.lambda.function_name
+  function_timeout_seconds = var.lambda_timeout
+  schedule_group_name      = module.scheduler.schedule_group_name
+  alarm_email              = var.alarm_email
+  tags                     = local.tags
+}

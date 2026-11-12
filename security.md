@@ -26,6 +26,28 @@ role permits interactive sign-in or access by people.
 RSS feeds, article pages, and ntfy are accessed over the public internet and
 do not require IAM permissions.
 
+### CI roles
+
+GitHub Actions authenticates through OIDC (`infra/terraform/bootstrap/`). No
+long-lived access keys exist. Each role's trust policy requires the
+`sts.amazonaws.com` audience and an exact `sub` claim:
+
+- `article-app-ci-plan` is for pull requests and the `main` branch. It is
+  read-only: it can read Terraform state and the managed resources, and it
+  plans without taking the state lock. It is explicitly denied reading
+  `state.db`.
+- `article-app-ci-deploy-dev` and `article-app-ci-deploy-prod` are usable only
+  from the matching GitHub environment, and both environments accept only
+  `main`. Each role can create and update only its own environment's resources
+  (`article-app-<env>-*`). It cannot delete buckets, functions, roles, schedules
+  or log groups, and it cannot edit the CI roles themselves. `iam:PassRole` is
+  limited to Lambda and EventBridge Scheduler.
+- `logs:DescribeLogGroups` is the only action on `*`, because AWS does not
+  accept a resource ARN for it.
+
+The account ID is masked in Actions logs, and `ntfy_topic` and `alarm_email`
+are sensitive variables, so plans show them as `(sensitive value)`.
+
 ## Data protection
 
 The state bucket has the following protections:
@@ -57,6 +79,11 @@ are excluded from Git; only the example file without a real topic is tracked.
 - The ntfy topic is not stored in Parameter Store. The current design relies on
   restricted access to Lambda configuration and Terraform state; use a secret
   store if stronger protection becomes necessary.
+- The deploy roles can write inline policies on their environment's roles and
+  update the function's code. Together that is enough to escalate within the
+  account, so whoever can merge to `main` and approve `prod` is effectively an
+  administrator. A permissions boundary on the app roles would close this; it
+  is not in place yet.
 - The Lambda is not placed in a VPC because it must fetch public feeds and
   articles. VPC placement would require additional networking, such as a NAT
   gateway, without protecting any private network resource.

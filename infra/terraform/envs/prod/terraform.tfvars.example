@@ -19,3 +19,6 @@ lambda_memory_size = 512
 # Keep production logs longer for troubleshooting.
 log_retention_in_days              = 14
 noncurrent_version_expiration_days = 7
+
+# CloudWatch alarms email this address. Confirm the SNS subscription email once.
+alarm_email = "you@example.com"

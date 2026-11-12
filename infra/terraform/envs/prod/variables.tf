@@ -66,3 +66,9 @@ variable "noncurrent_version_expiration_days" {
   type        = number
   default     = 7
 }
+
+variable "alarm_email" {
+  description = "Address the CloudWatch alarm emails go to; kept out of the repo"
+  type        = string
+  sensitive   = true
+}
