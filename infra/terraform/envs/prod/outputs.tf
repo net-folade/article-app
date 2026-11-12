@@ -42,3 +42,8 @@ output "schedule_group_name" {
   description = "Dedicated scheduler group scoping the execution role trust policy"
   value       = module.scheduler.schedule_group_name
 }
+
+output "dashboard_name" {
+  description = "CloudWatch dashboard for the picker"
+  value       = module.monitoring.dashboard_name
+}
