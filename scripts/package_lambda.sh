@@ -30,6 +30,7 @@ python3 -m pip install \
   --python-version "${PY_VERSION}" \
   --implementation cp \
   --only-binary=:all: \
+  --no-compile \
   --upgrade
 
 # Keep src at the zip root. Lambda already includes boto3.
@@ -38,8 +39,13 @@ cp -R "${ROOT}/src" "${STAGE}/src"
 # Keep *.dist-info because some packages read it at runtime.
 find "${STAGE}" -type d -name __pycache__ -prune -exec rm -rf -- {} +
 
+# Same inputs, same zip: fixed mtimes, sorted entries, no extra attributes.
+# Otherwise source_code_hash changes on every build and every plan shows a
+# code update for an unchanged function.
 echo "==> zipping"
-(cd "${STAGE}" && zip -qr "${ZIP}" .)
+(cd "${STAGE}" \
+  && find . -exec touch -h -t 198001010000 {} + \
+  && find . -type f | LC_ALL=C sort | zip -qX "${ZIP}" -@)
 
 SIZE=$(du -h "${ZIP}" | cut -f1)
 echo "==> ${ZIP} (${SIZE})"

@@ -31,3 +31,184 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+
+  # ---------------------------------------------------------------------------
+  # Terraform: plan on pull requests, deploy on main.
+  #
+  # AWS access is OIDC only: each job exchanges a GitHub-signed token for a
+  # one-hour role session (infra/terraform/bootstrap). No access keys exist.
+  # The account ID is masked in logs because this repository is public.
+  #
+  # Secrets: AWS_PLAN_ROLE_ARN, TFVARS_DEV, TFVARS_PROD (repository), and
+  # AWS_DEPLOY_ROLE_ARN in each of the dev and prod environments.
+  # ---------------------------------------------------------------------------
+
+  plan:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [dev, prod]
+    env:
+      TF_DIR: infra/terraform/envs/${{ matrix.env }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.8
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_PLAN_ROLE_ARN }}
+          aws-region: us-east-1
+          mask-aws-account-id: true
+      - run: ./scripts/package_lambda.sh
+      - name: write tfvars
+        env:
+          TFVARS: ${{ matrix.env == 'prod' && secrets.TFVARS_PROD || secrets.TFVARS_DEV }}
+        run: printf '%s\n' "$TFVARS" > "$TF_DIR/terraform.tfvars"
+      - run: terraform -chdir="$TF_DIR" init -input=false
+      # Read-only role: it cannot write the lock file, so plans skip the lock.
+      - run: terraform -chdir="$TF_DIR" plan -input=false -lock=false -no-color
+
+  deploy-dev:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [python, app]
+    runs-on: ubuntu-latest
+    environment: dev
+    concurrency:
+      group: deploy-dev
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TF_DIR: infra/terraform/envs/dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.8
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+          mask-aws-account-id: true
+      - run: ./scripts/package_lambda.sh
+      - name: write tfvars
+        env:
+          TFVARS: ${{ secrets.TFVARS_DEV }}
+        run: printf '%s\n' "$TFVARS" > "$TF_DIR/terraform.tfvars"
+      - run: terraform -chdir="$TF_DIR" init -input=false
+      # -detailed-exitcode: 0 no changes, 1 error, 2 changes present.
+      - id: plan
+        run: |
+          set +e
+          terraform -chdir="$TF_DIR" plan -input=false -no-color -detailed-exitcode -out=tfplan
+          code=$?
+          set -e
+          [ "$code" -eq 1 ] && exit 1
+          echo "changed=$([ "$code" -eq 2 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - if: steps.plan.outputs.changed == 'true'
+        run: terraform -chdir="$TF_DIR" apply -input=false -no-color tfplan
+      # Smoke test: one real run in dev (pushes to the dev ntfy topic).
+      - if: steps.plan.outputs.changed == 'true'
+        run: |
+          fn=$(terraform -chdir="$TF_DIR" output -raw function_name)
+          err=$(aws lambda invoke --function-name "$fn" --payload '{}' \
+            --cli-binary-format raw-in-base64-out --cli-read-timeout 330 \
+            --query FunctionError --output text /tmp/response.json)
+          if [ "$err" != "None" ]; then
+            echo "dev smoke test failed: $err"
+            exit 1
+          fi
+
+  # Plans prod read-only so the approval gate below only appears when prod
+  # would actually change.
+  check-prod:
+    needs: [deploy-dev]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      changed: ${{ steps.plan.outputs.changed }}
+    env:
+      TF_DIR: infra/terraform/envs/prod
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.8
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_PLAN_ROLE_ARN }}
+          aws-region: us-east-1
+          mask-aws-account-id: true
+      - run: ./scripts/package_lambda.sh
+      - name: write tfvars
+        env:
+          TFVARS: ${{ secrets.TFVARS_PROD }}
+        run: printf '%s\n' "$TFVARS" > "$TF_DIR/terraform.tfvars"
+      - run: terraform -chdir="$TF_DIR" init -input=false
+      - id: plan
+        run: |
+          set +e
+          terraform -chdir="$TF_DIR" plan -input=false -lock=false -no-color -detailed-exitcode
+          code=$?
+          set -e
+          [ "$code" -eq 1 ] && exit 1
+          echo "changed=$([ "$code" -eq 2 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+  # The prod environment requires approval before this job starts. Review the
+  # prod plan in check-prod's log first.
+  deploy-prod:
+    needs: [check-prod]
+    if: needs.check-prod.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    environment: prod
+    concurrency:
+      group: deploy-prod
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TF_DIR: infra/terraform/envs/prod
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.8
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+          mask-aws-account-id: true
+      - run: ./scripts/package_lambda.sh
+      - name: write tfvars
+        env:
+          TFVARS: ${{ secrets.TFVARS_PROD }}
+        run: printf '%s\n' "$TFVARS" > "$TF_DIR/terraform.tfvars"
+      - run: terraform -chdir="$TF_DIR" init -input=false
+      - run: terraform -chdir="$TF_DIR" plan -input=false -no-color -out=tfplan
+      - run: terraform -chdir="$TF_DIR" apply -input=false -no-color tfplan

@@ -69,6 +69,44 @@ resources, ntfy topics, Terraform state, and selection history.
 The development deployment catches issues that offline tests cannot, including
 package compatibility and AWS permission errors.
 
+Production also has CloudWatch monitoring: a dashboard named
+`article-app-prod`, and email alarms for a missed run (no invocation for 26
+hours), any function error, and a run using more than 80% of its timeout. The
+first apply sends an AWS subscription email that must be confirmed once.
+
+## Deploy pipeline
+
+GitHub Actions deploys through OIDC. Each job trades a GitHub-signed token for
+a one-hour AWS role session, so no access keys are stored anywhere.
+
+| Event | What runs |
+|---|---|
+| Pull request | Tests, then a read-only `terraform plan` for dev and prod |
+| Merge to `main` | Tests, then plan and apply dev, then a smoke test that invokes dev once |
+| Merge to `main`, prod changed | A read-only prod plan (`check-prod`), then an apply that waits for approval in the `prod` environment |
+
+Plans and applies are skipped when there are no changes, so a merge that does
+not touch the infrastructure does not ask for prod approval. The package build
+is deterministic for the same reason: an unchanged function produces the same
+zip and the same hash.
+
+The CI can create and update resources but not delete them. `make destroy`
+stays a local command.
+
+### One-time setup
+
+1. Apply the CI roles locally with admin credentials:
+   `terraform -chdir=infra/terraform/bootstrap init` and then `apply`.
+2. Add the repository secrets `AWS_PLAN_ROLE_ARN`, `TFVARS_DEV`, and
+   `TFVARS_PROD`. The `TFVARS_*` values are the full contents of each
+   environment's local `terraform.tfvars`.
+3. Create the `dev` and `prod` environments, each limited to the `main`
+   branch, with `AWS_DEPLOY_ROLE_ARN` set from the bootstrap outputs. Add a
+   required reviewer to `prod`.
+
+After editing a local `terraform.tfvars`, update the matching `TFVARS_*`
+secret. Otherwise CI deploys the old values.
+
 ## Repository layout
 
 - `src/` contains the application and Lambda handler.
@@ -76,6 +114,8 @@ package compatibility and AWS permission errors.
 - `scripts/` contains feed, packaging, dry-run, and statistics utilities.
 - `infra/terraform/modules/` contains the reusable AWS modules.
 - `infra/terraform/envs/` contains the development and production deployments.
+- `infra/terraform/bootstrap/` contains the GitHub OIDC provider and CI roles,
+  applied once by hand.
 
 ## Operations and security
 
